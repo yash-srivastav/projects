@@ -1,0 +1,112 @@
+---
+title: "hodrick-prescott filter"
+author: "yash srivastav"
+date: "4/6/21"
+output: html_document
+---
+In this report, I show how to apply the Hodrick-Prescott (HP) filter— a smoothing technique commonly used in macroeconomics to estimate the long-term trends of time series data, less seasonal fluctuations. 
+
+Theoretically, the HP filter decomposes a time series into a trend component and a seasonality component. We can look at a generic time series (e.g. GDP, unemployment, etc.) expressed in log linear terms:
+
+\begin{equation}
+\text{log} y_t = g_t + c_t
+\end{equation}
+
+where $g_t$ represents the the growth component and $c_t$ represents the cyclical component.
+
+The HP filter, by using a prespecified penalty term $\lambda$, minimizes the following objective function:
+
+\begin{equation}
+\sum_{t=1}^{T}c_t^2 + \lambda \sum_{t=3}^{T}[(1-L)^2 g_t]^2
+\end{equation}
+
+to estimate $g_t$, $c_t$. Hodrick and Prescott recommend using $\lambda=14400$ for monthly data, $\lambda=1600$ for quarterly data, and $\lambda=100$ for yearly data. 
+
+## Application
+
+We can apply the HP filter to the Consumer Price Index.
+
+```{r echo = T, results = 'hide'}
+#reading in relevant libraries
+library(readxl)
+library(xts)
+library(ggplot2)
+library(mFilter)
+library(tseries)
+library(openxlsx)
+```
+
+
+```{r}
+raw_cpi <- read_excel("~/Downloads/CPIAUCSL.xls")
+```
+
+```{r}
+head(raw_cpi,20)
+```
+There are two immediate problems. The first is that we have a few rows of filler text we don't really need. The actual data becomes relevant at line 10. The second problem is that our dates are expressed in numeric format. To convert them to a format interpretable to humans, we can use a function built into the tSeries library.
+
+First, let's get rid of the first 9 rows, and rename our columns.
+```{r}
+cpi <- raw_cpi[10:900,]
+names(cpi)[1] <- "DATE"
+names(cpi)[2] <- "CPI"
+cpi <- cpi[2:891,]
+head(cpi)
+```
+
+Now we can convert our date column into a human readable format.
+```{r}
+cpi$DATE <- convertToDate(cpi$DATE,origin="1900-01-01")
+cpi$CPI <- as.numeric(cpi$CPI)
+head(cpi)
+```
+
+```{r}
+ggplot(data=cpi,aes(x=DATE,y=log(CPI))) + geom_line()
+```
+
+
+Converting our dataframe to a timeseries object will make it easier to transform our data. 
+```{r}
+cpi <- ts(cpi[,2],start=c(1947,1),frequency=12)
+```
+
+
+Now our time series is looking usable. However, we want to work with the log transformation of CPI data as it lends itself better to analyzing the growth of our original data.
+
+```{r}
+log_cpi <- log(cpi)
+head(log_cpi)
+```
+
+Now, instead of looking at the log of CPI data, we can take advantage of the log form of our data and take the first difference of our time series. In effect, we are constructing a proxy for inflation, or price growth.
+```{r}
+fd_log_cpi <- diff(log_cpi)
+head(fd_log_cpi)
+```
+
+Finally, we apply the HP filter to our first differenced price data. The function is quite simple, and requires the original dataset and a numerical specification for $\lambda$.
+```{r}
+fd_log_cpi.hp <- hpfilter(fd_log_cpi,freq=14400,type="lambda")
+```
+
+We can now graph our original time series with an overlay of the HP filter trend. 
+```{r}
+plot(fd_log_cpi,ylab="log price growth")
+lines(fd_log_cpi.hp$trend,col="red")
+legend("topright",legend=c("price growth","trend"),lty=1,col=c("black","red"),bty="n")
+abline(h=0,col="blue",lty=2)
+```
+
+We can also plot the cyclical component, or $c_t$ over time.
+```{r}
+plot(fd_log_cpi.hp$cycle,ylab='cylical component')
+```
+
+
+
+
+
+
+
